@@ -152,16 +152,132 @@ Your Question → Search PDF → Search Web → Combine → AI Answer
 
 ---
 
-## 🔧 Who Does What?
+## 🔧 Where LangChain Works in the Code
 
-| Component | What It Does | Library |
-|-----------|--------------|---------|
-| **PyPDFLoader** | Reads PDF files | LangChain |
-| **RecursiveCharacterTextSplitter** | Breaks text into chunks | LangChain |
-| **HuggingFaceEmbeddings** | Converts text to numbers | LangChain + HuggingFace |
-| **FAISS** | Stores & searches vectors | Facebook AI |
-| **TavilySearchResults** | Searches the web | LangChain + Tavily API |
-| **ChatOpenAI** | Talks to the LLM | LangChain + OpenRouter |
+LangChain is the **glue** that connects all the AI pieces together. Here's exactly where it's used:
+
+### 📦 LangChain Imports (Lines 18-25)
+
+```python
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from langchain_openai import ChatOpenAI
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain.schema import HumanMessage, SystemMessage
+```
+
+### 1️⃣ PyPDFLoader - Reads PDF (Line 118)
+
+```python
+loader = PyPDFLoader(tmp_path)
+documents = loader.load()  # Returns list of Document objects
+```
+
+**What it does:** Opens your PDF and extracts text from each page
+
+---
+
+### 2️⃣ RecursiveCharacterTextSplitter - Chunks Text (Lines 126-131)
+
+```python
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200
+)
+splits = text_splitter.split_documents(documents)
+```
+
+**What it does:** Breaks the PDF into ~1000 character pieces with 200 char overlap
+
+---
+
+### 3️⃣ HuggingFaceEmbeddings - Converts Text to Numbers (Lines 102-106)
+
+```python
+embeddings = HuggingFaceEmbeddings(
+    model_name="all-MiniLM-L6-v2",
+    model_kwargs={'device': 'cpu'},
+    encode_kwargs={'normalize_embeddings': True}
+)
+```
+
+**What it does:** Converts each text chunk into a vector (list of 384 numbers)
+
+---
+
+### 4️⃣ FAISS - Stores & Searches Vectors (Line 137)
+
+```python
+vectorstore = FAISS.from_documents(splits, embeddings)
+```
+
+**What it does:** Stores all vectors for fast similarity search
+
+---
+
+### 5️⃣ FAISS.similarity_search - Finds Relevant Chunks (Line 155)
+
+```python
+docs = vectorstore.similarity_search(query, k=4)
+```
+
+**What it does:** When you ask a question, finds the 4 most similar chunks from your PDF
+
+---
+
+### 6️⃣ TavilySearchResults - Web Search (Lines 169-170)
+
+```python
+tavily = TavilySearchResults(api_key=tavily_key, max_results=3)
+results = tavily.run(query)
+```
+
+**What it does:** Searches the internet using Tavily API
+
+---
+
+### 7️⃣ ChatOpenAI - Talks to LLM (Lines 280-289)
+
+```python
+llm = ChatOpenAI(
+    openai_api_key=openrouter_api_key,
+    openai_api_base="https://openrouter.ai/api/v1",
+    model_name=model_name,
+    temperature=temperature
+)
+```
+
+**What it does:** Creates connection to GPT/Claude via OpenRouter
+
+---
+
+### 8️⃣ SystemMessage & HumanMessage - Formats Prompts (Lines 202-207)
+
+```python
+messages = [
+    SystemMessage(content=system_prompt),
+    HumanMessage(content=f"Context:\n{context}\n\nQuestion: {question}")
+]
+response = llm.invoke(messages)
+```
+
+**What it does:** Sends properly formatted messages to the LLM and gets the response
+
+---
+
+## 🔧 Who Does What? (Summary Table)
+
+| Component | What It Does | Library | Line # |
+|-----------|--------------|---------|--------|
+| **PyPDFLoader** | Reads PDF files | LangChain | 118 |
+| **RecursiveCharacterTextSplitter** | Breaks text into chunks | LangChain | 126-131 |
+| **HuggingFaceEmbeddings** | Converts text to numbers | LangChain | 102-106 |
+| **FAISS** | Stores & searches vectors | LangChain + Facebook | 137, 155 |
+| **TavilySearchResults** | Searches the web | LangChain + Tavily | 169-170 |
+| **ChatOpenAI** | Talks to the LLM | LangChain + OpenRouter | 280-289 |
+| **SystemMessage/HumanMessage** | Formats prompts | LangChain | 202-207 |
 
 ---
 
@@ -202,12 +318,16 @@ This is more reliable than having an AI "agent" decide which tool to use (which 
          ┌──────────────────┐              ┌──────────────────┐
          │   FAISS Search   │              │  Tavily Search   │
          │   (Your PDF)     │              │  (The Internet)  │
+         │                  │              │                  │
+         │   LANGCHAIN      │              │   LANGCHAIN      │
          └──────────────────┘              └──────────────────┘
                     │                                 │
                     └────────────────┬────────────────┘
                                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                    LLM (GPT-3.5/4 via OpenRouter)                         │
+│                                                                          │
+│  ChatOpenAI + SystemMessage + HumanMessage (LANGCHAIN)                   │
 │                                                                          │
 │  "Here's what I found in your PDF and online. Let me combine that        │
 │   into a helpful answer for you..."                                      │
@@ -235,12 +355,37 @@ This is more reliable than having an AI "agent" decide which tool to use (which 
 - Plus web search keeps answers current
 
 ### LangChain's Role
+
 LangChain is like **LEGO blocks for AI apps**:
 - Provides ready-made pieces (loaders, splitters, embeddings, etc.)
 - Lets you snap them together easily
 - Handles the complex stuff behind the scenes
 
+**Without LangChain**, you'd have to write hundreds of lines of code to:
+- Parse PDFs manually
+- Implement chunking algorithms
+- Connect to embedding APIs
+- Build vector search from scratch
+- Handle LLM API calls and formatting
+
+**With LangChain**, it's just a few lines each! 🚀
+
+---
+
+## 📁 Project Structure
+
+```
+AgenticLangGraph/
+├── agentic_rag_app.py    # Main Streamlit application
+├── requirements.txt       # Python dependencies
+├── .env.example          # Template for API keys
+├── .env                  # Your actual API keys (git ignored)
+├── .gitignore            # Files to exclude from git
+├── README.md             # Project overview
+├── HOW_IT_WORKS.md       # This file!
+└── venv/                 # Virtual environment (git ignored)
+```
+
 ---
 
 *That's it! Simple, right?* 🚀
-
